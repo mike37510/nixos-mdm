@@ -1,0 +1,33 @@
+# Secrets / config locale
+/config.local.php
+/.devbox-db.php
+/docker/.env
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Données runtime (ne pas versionner)
+/storage/
+/data/nix/
+/data/mysql/
+/data/ssh-host-keys/
+/mdm/data/settings.json.bak
+/assets/branding/*
+!/assets/branding/.gitkeep
+
+# Backups / dumps / images
+*.ova
+*.qcow2
+*.vmdk
+*.sql
+*.sql.gz
+*.tar
+*.tar.gz
+*.bak
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

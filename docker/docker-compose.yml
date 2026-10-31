@@ -1,0 +1,65 @@
+# NIX Builder 0.1
+#   cp .env.example .env   # puis adapter les mots de passe et chemins
+#   docker compose up -d --build
+name: nixvm
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nixvm-builder:0.1.0
+    container_name: nixvm
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${NIXVM_HTTP_PORT:-8080}:80"
+      - "${NIXVM_SSH_PORT:-2222}:22"
+    # Tout est en bind dans le dossier de l'application ; data/ est bloqué côté web par data/.htaccess.
+    volumes:
+      # Code de l'application + storage/ (configs générées, images OVA, journaux, builds temporaires).
+      - ../:/var/www/html
+      # Store Nix (paquets téléchargés + images construites, plusieurs dizaines de Go).
+      - ${NIXVM_NIX_DIR:-../data/nix}:/nix
+      # Clés d'hôte SSH : l'empreinte reste la même d'un rebuild à l'autre.
+      - ../data/ssh-host-keys:/etc/ssh/host_keys
+    # Accélération matérielle des builds. Si l'hôte n'a pas KVM (`ls -l /dev/kvm` échoue),
+    # le conteneur refuse de démarrer : commenter ces deux lignes, les builds passeront en émulation QEMU.
+    devices:
+      - /dev/kvm:/dev/kvm
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      NIXVM_DB_HOST: ${NIXVM_DB_HOST:-db}
+      NIXVM_DB_PORT: ${NIXVM_DB_PORT:-3306}
+      NIXVM_DB_NAME: ${NIXVM_DB_NAME:-nixvm}
+      NIXVM_DB_USER: ${NIXVM_DB_USER:-nixvm}
+      NIXVM_DB_PASSWORD: ${NIXVM_DB_PASSWORD:?définir NIXVM_DB_PASSWORD dans docker/.env}
+      # Dossier des builds temporaires (2 copies du système, 20 Go et plus avec un bureau).
+      NIXVM_BUILD_DIR: ${NIXVM_BUILD_DIR:-/var/www/html/storage/nix-builds}
+      NIX_VERSION: ${NIX_VERSION:-2.35.2}
+      # Mot de passe root pour SSH ; vide = SSH désactivé.
+      NIXVM_ROOT_PASSWORD: ${NIXVM_ROOT_PASSWORD:-}
+      # HTTP Basic Auth (toute l'UI + téléchargements)
+      NIXVM_WEB_USER: ${NIXVM_WEB_USER:-admin}
+      NIXVM_WEB_PASSWORD: ${NIXVM_WEB_PASSWORD:?définir NIXVM_WEB_PASSWORD dans docker/.env}
+
+  db:
+    image: mariadb:11.8
+    container_name: nixvm-db
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      MARIADB_DATABASE: ${NIXVM_DB_NAME:-nixvm}
+      MARIADB_USER: ${NIXVM_DB_USER:-nixvm}
+      MARIADB_PASSWORD: ${NIXVM_DB_PASSWORD:?définir NIXVM_DB_PASSWORD dans docker/.env}
+      MARIADB_ROOT_PASSWORD: ${NIXVM_DB_ROOT_PASSWORD:?définir NIXVM_DB_ROOT_PASSWORD dans docker/.env}
+    volumes:
+      - ../data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s

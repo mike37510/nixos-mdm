@@ -1,0 +1,5 @@
+# Linux MDM — auth gérée par l'application (sessions PHP).
+# Les fichiers clients restent accessibles sans login.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+</IfModule>

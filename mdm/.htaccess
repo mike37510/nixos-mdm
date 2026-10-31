@@ -1,0 +1,12 @@
+Options -Indexes
+RewriteEngine On
+
+# Front public (UI + fichiers générés pour les clients)
+RewriteRule ^$ public/index.php [L]
+RewriteRule ^generated/(.*)$ public/generated/$1 [L]
+RewriteRule ^public/(.*)$ public/$1 [L]
+# Centre logiciels client — URL propre (fenêtre app, pas « fichier .php »)
+RewriteRule ^software-center$ public/app.php [L,QSA]
+RewriteRule ^app$ public/app.php [L,QSA]
+# Pages UI (centre logiciels, magasin, …)
+RewriteRule ^([a-z0-9_-]+)\.php$ public/$1.php [L,QSA]
