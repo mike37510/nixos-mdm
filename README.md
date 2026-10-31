@@ -1,10 +1,10 @@
-# Linux MDM 0.3.9
+# Linux MDM 0.4.0
 
 MDM pour postes **NixOS** : profils logiciels versionnés, inventaire machines (dossiers), magasin DSI et app client **Centre Logiciels**.
 
 | | |
 | --- | --- |
-| Version | **0.3.9** |
+| Version | **0.4.0** |
 | Guide | [docs/GUIDE.md](docs/GUIDE.md) |
 | Historique | [CHANGELOG.md](CHANGELOG.md) |
 | Changelog UI | `/mdm/changelog.php` |
@@ -58,8 +58,10 @@ Puis sur le bureau : **Applications → Centre Logiciels**.
 
 ## Fonctionnalités principales
 
-- **Profils** : paquets, fréquence, versions / restauration, **dossiers imbriqués** (drag & drop)
-- **Machines** : inventaire, profils, **dossiers imbriqués** (drag & drop)
+- **Tableau de bord** : machines, hors sync, échecs / rollback, dernières publications
+- **Profils** : paquets, options système NixOS (SSH, firewall, CUPS, fuseau, locale, proxy), versions / restauration, **dossiers imbriqués**
+- **Machines** : inventaire, statut sync réel (OK/KO, génération Nix, version profil, erreur), dossiers imbriqués
+- **Rollback client** : retour automatique à la génération précédente si `nixos-rebuild` échoue
 - **Magasin / Logiciels** : catalogue DSI et retrait depuis le profil
 - **Centre Logiciels** : self-service, sync immédiate, journal local
 - **Configuration** : URL publique du hub, logo / identité (admin)

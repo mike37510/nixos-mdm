@@ -76,6 +76,9 @@ function layout_header(string $title, string $active = ''): void
     </div>
     <nav class="mp-nav">
       <div class="mp-nav-label">Gestion</div>
+      <a href="/mdm/dashboard.php" class="<?= $active === 'dashboard' ? 'is-active' : '' ?>">
+        <span class="mp-nav-ico" aria-hidden="true"><?= mp_ico('dashboard') ?></span> Tableau de bord
+      </a>
       <a href="/mdm/" class="<?= $active === 'mdm' ? 'is-active' : '' ?>">
         <span class="mp-nav-ico" aria-hidden="true"><?= mp_ico('grid') ?></span> Profils
       </a>
@@ -195,6 +198,7 @@ function layout_footer(string ...$scripts): void
 function mp_ico(string $name): string
 {
     $paths = [
+        'dashboard' => '<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="13" y="10" width="8" height="11" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/>',
         'grid' => '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
         'monitor' => '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
         'apps' => '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',

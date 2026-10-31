@@ -209,6 +209,25 @@ $renderMachine = static function (array $row) use ($profiles): void {
     $fid = isset($row['folder_id']) && $row['folder_id'] !== null && $row['folder_id'] !== ''
         ? (int) $row['folder_id']
         : 0;
+    $syncStatus = (string) ($row['sync_status'] ?? '');
+    $outOfSync = Clients::isOutOfSync($row);
+    $syncClass = match ($syncStatus) {
+        'ok' => $outOfSync ? 'sync-warn' : 'sync-ok',
+        'failed' => 'sync-fail',
+        default => 'sync-unknown',
+    };
+    $syncLabel = match ($syncStatus) {
+        'ok' => $outOfSync ? 'Décalé' : 'OK',
+        'failed' => !empty($row['rolled_back']) ? 'Échec + rollback' : 'Échec',
+        default => 'Inconnu',
+    };
+    $appliedVer = isset($row['profile_version']) && $row['profile_version'] !== null
+        ? (int) $row['profile_version'] : null;
+    $expectedVer = isset($row['expected_profile_version']) && $row['expected_profile_version'] !== null
+        ? (int) $row['expected_profile_version'] : null;
+    $gen = isset($row['nix_generation']) && $row['nix_generation'] !== null
+        ? (int) $row['nix_generation'] : null;
+    $err = trim((string) ($row['sync_error'] ?? ''));
     ?>
     <article class="mf-card" draggable="true"
              data-client-id="<?= (int) $row['id'] ?>"
@@ -218,16 +237,32 @@ $renderMachine = static function (array $row) use ($profiles): void {
         <div class="mf-card-title">
           <strong><?= e((string) ($row['hostname'] ?: '—')) ?></strong>
           <span class="muted mono"><?= e((string) ($row['mac'] ?: '')) ?></span>
+          <span class="sync-pill <?= e($syncClass) ?>" title="Statut dernière sync"><?= e($syncLabel) ?></span>
         </div>
         <div class="mf-card-meta muted">
           IP <?= e((string) ($row['last_ip'] ?: '—')) ?>
           · sync <?= !empty($row['last_sync_at']) ? e((string) $row['last_sync_at']) : 'jamais' ?>
+          <?php if ($gen !== null): ?>
+            · gen <span class="sw-version"><?= $gen ?></span>
+          <?php endif; ?>
+          <?php if ($appliedVer !== null || $expectedVer !== null): ?>
+            · profil
+            <span class="sw-version">
+              v<?= $appliedVer !== null ? $appliedVer : '?' ?>
+              <?php if ($expectedVer !== null && $appliedVer !== $expectedVer): ?>
+                → v<?= $expectedVer ?>
+              <?php endif; ?>
+            </span>
+          <?php endif; ?>
           <?php if ($deployed !== ''): ?>
             · <?= $pending
               ? '<span class="sw-badge">' . e($deployed) . ' → ' . e($assignedSlug) . '</span>'
               : '<span class="sw-version">' . e($deployed) . '</span>' ?>
           <?php endif; ?>
         </div>
+        <?php if ($err !== ''): ?>
+          <div class="mf-card-error" title="<?= e($err) ?>"><?= e(mb_strlen($err) > 160 ? mb_substr($err, 0, 160) . '…' : $err) ?></div>
+        <?php endif; ?>
         <div class="mf-card-actions">
           <form method="post" class="mf-assign">
             <input type="hidden" name="action" value="assign">

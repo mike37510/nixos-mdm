@@ -31,6 +31,9 @@ final class NixGenerator
         $parcPathSuffix = $isDefault ? 'generated/parc.nix' : 'generated/profiles/' . $slug . '/parc.nix';
         $settings['_parcPathSuffix'] = $parcPathSuffix;
         $settings['_profileSlug'] = $slug;
+        if (!isset($settings['_profileVersion'])) {
+            $settings['_profileVersion'] = (int) ($opts['profileVersion'] ?? 0);
+        }
 
         $module = str_replace("\r\n", "\n", $this->renderModule($settings));
         $flake = str_replace("\r\n", "\n", $this->renderFlake());
@@ -124,19 +127,22 @@ final class NixGenerator
         $centerBlock = $includeCenter ? $this->renderSoftwareCenterBlock($hubUrl) : '';
         $syncTools = $enable ? $this->renderSyncToolsAppend() : '';
         $syncAgent = $enable ? $this->renderSyncAgentBlock() : '';
+        $systemBlock = $this->renderSystemOptions($settings);
+        $profileVer = (int) ($settings['_profileVersion'] ?? 0);
+        $profileSlug = (string) ($settings['_profileSlug'] ?? 'default');
 
         $datesNix = $this->nixString($dates);
         $delayNix = $this->nixString($delay);
         // Échapper pour Nix ''…'' : ''${ → ${ bash ; \$ → $ pour PHP heredoc.
         $timerBlock = $enable ? <<<NIX
 
-  # Tire périodiquement parc.nix depuis CE hub, puis rebuild.
+  # Tire périodiquement parc.nix depuis CE hub, puis rebuild (+ rollback si échec).
   systemd.services.nix-builder-mdm-sync = {
     description = "Linux MDM — sync config parc + rebuild";
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
     serviceConfig.Type = "oneshot";
-    path = [ pkgs.curl pkgs.nix pkgs.bash pkgs.coreutils pkgs.git ];
+    path = [ pkgs.curl pkgs.nix pkgs.bash pkgs.coreutils pkgs.git pkgs.gnugrep pkgs.gnused pkgs.python3 pkgs.iproute2 ];
     environment = config.nix.envVars // {
       # Requis sous systemd (pas de NIX_PATH de session)
       NIX_PATH = lib.concatStringsSep ":" config.nix.nixPath;
@@ -153,6 +159,7 @@ final class NixGenerator
       HUB="''\${MDM_URL:-{$hubUrl}}"
       DEST=/etc/nixos/parc.nix
       TMP="\$(mktemp)"
+      LOG="\$(mktemp)"
       # Profil dynamique : si token présent, le serveur décide du profil assigné.
       if [ -n "''\${MDM_DEVICE_TOKEN:-}" ]; then
         curl -fsSL "\$HUB/parc-for-device.php?token=\$MDM_DEVICE_TOKEN" -o "\$TMP"
@@ -161,6 +168,9 @@ final class NixGenerator
       fi
       mv "\$TMP" "\$DEST"
       chmod 644 "\$DEST"
+      PROF_VER="\$(grep -E '^# MDM_PROFILE_VERSION=' "\$DEST" | head -1 | cut -d= -f2 || true)"
+      PROF_SLUG="\$(grep -E '^# MDM_PROFILE_SLUG=' "\$DEST" | head -1 | cut -d= -f2 || true)"
+      GEN_BEFORE="\$(readlink -f /nix/var/nix/profiles/system 2>/dev/null | grep -oE '[0-9]+\$' || echo 0)"
       # Hostname dérivé de la MAC : nixos-<12 hex>
       MAC="\$(cat /sys/class/net/*/address 2>/dev/null | grep -vi '^00:00:00:00:00:00\$' | head -1 || true)"
       MAC_HEX="\$(printf '%s' "\$MAC" | tr -d ':-' | tr 'A-F' 'a-f')"
@@ -178,11 +188,39 @@ final class NixGenerator
           fi
         fi
       fi
-      echo "Linux MDM : parc.nix mis à jour, nixos-rebuild {$operation} …"
-      if ! \${config.system.build.nixos-rebuild}/bin/nixos-rebuild {$operation}; then
-        echo "Linux MDM : ÉCHEC nixos-rebuild — voir journalctl -u nix-builder-mdm-sync.service" >&2
+      mdm_report() {
+        local st="\$1" err="\$2" rb="\$3" gen="\$4"
+        [ -z "''\${MDM_DEVICE_TOKEN:-}" ] && return 0
+        HN_NOW="\$(hostname -s 2>/dev/null || true)"
+        IP_NOW="\$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if(\$i==\"src\") print \$(i+1)}' | head -1 || true)"
+        ERR_JSON="\$(printf '%s' "\$err" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()[:3500]))' 2>/dev/null || printf '"rebuild failed"')"
+        curl -fsS -X POST "\$HUB/client-api.php?action=sync-report&token=\$MDM_DEVICE_TOKEN" \
+          -H 'Content-Type: application/json' \
+          -d "{\"status\":\"\$st\",\"error\":\$ERR_JSON,\"rolled_back\":\$rb,\"nix_generation\":\$gen,\"profile_version\":''\${PROF_VER:-0},\"profile_slug\":\"''\${PROF_SLUG:-}\",\"hostname\":\"\$HN_NOW\",\"ip\":\"\$IP_NOW\"}" \
+          >/dev/null 2>&1 || true
+      }
+      echo "Linux MDM : parc.nix mis à jour, nixos-rebuild {$operation} (gen \$GEN_BEFORE) …"
+      if ! \${config.system.build.nixos-rebuild}/bin/nixos-rebuild {$operation} >"\$LOG" 2>&1; then
+        echo "Linux MDM : ÉCHEC nixos-rebuild — tentative de rollback gen \$GEN_BEFORE" >&2
+        tail -n 40 "\$LOG" >&2 || true
+        RB=0
+        if [ "\$GEN_BEFORE" -gt 0 ] 2>/dev/null; then
+          if nix-env --profile /nix/var/nix/profiles/system --switch-generation "\$GEN_BEFORE" >>"\$LOG" 2>&1 \\
+            && /nix/var/nix/profiles/system/bin/switch-to-configuration switch >>"\$LOG" 2>&1; then
+            RB=1
+            echo "Linux MDM : rollback OK → génération \$GEN_BEFORE" >&2
+          else
+            echo "Linux MDM : rollback ÉCHEC — intervention manuelle requise" >&2
+          fi
+        fi
+        ERR_MSG="\$(tail -n 25 "\$LOG" | tr '\\n' ' ' | head -c 2000)"
+        mdm_report failed "\$ERR_MSG" "\$RB" "\$GEN_BEFORE"
+        rm -f "\$LOG"
         exit 1
       fi
+      GEN_AFTER="\$(readlink -f /nix/var/nix/profiles/system 2>/dev/null | grep -oE '[0-9]+\$' || echo 0)"
+      mdm_report ok "" 0 "\$GEN_AFTER"
+      rm -f "\$LOG"
     '';
   };
 
@@ -203,6 +241,8 @@ NIX : "\n  # Sync MDM désactivé (autoUpgradeEnable = false)\n";
 # Mis à jour : {$updatedAt}
 # Fréquence  : {$label}
 # Hébergé sur : {$hubUrl}/{$settings['_parcPathSuffix']}
+# MDM_PROFILE_SLUG={$profileSlug}
+# MDM_PROFILE_VERSION={$profileVer}
 #
 # Ce fichier est téléchargé automatiquement par chaque client.
 # Ajoutez / retirez des logiciels dans l’UI Linux MDM, enregistrez :
@@ -217,20 +257,74 @@ NIX : "\n  # Sync MDM désactivé (autoUpgradeEnable = false)\n";
 {$pkgLines}
   ]{$centerBlock}{$syncTools};
 
-  # SSH activé par défaut (parc / accès distant)
-  services.openssh.enable = true;
-
   # Pas de Firefox par défaut (écrase la config de base si besoin)
   programs.firefox.enable = lib.mkForce false;
 
   # open-vm-tools (VMware) — utile pour les VM de test
   virtualisation.vmware.guest.enable = true;
+{$systemBlock}
 {$timerBlock}
 {$syncAgent}
   # Optionnel : reboot autorisé lors d’un rebuild qui le demande
   system.autoUpgrade.allowReboot = {$allowReboot};
 }
 
+NIX;
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function renderSystemOptions(array $settings): string
+    {
+        $sys = is_array($settings['system'] ?? null)
+            ? array_merge(
+                [
+                    'openssh' => true,
+                    'firewall' => false,
+                    'printing' => false,
+                    'timezone' => 'Europe/Paris',
+                    'locale' => 'fr_FR.UTF-8',
+                    'proxy' => '',
+                ],
+                $settings['system']
+            )
+            : [
+                'openssh' => true,
+                'firewall' => false,
+                'printing' => false,
+                'timezone' => 'Europe/Paris',
+                'locale' => 'fr_FR.UTF-8',
+                'proxy' => '',
+            ];
+
+        $ssh = !empty($sys['openssh']) ? 'true' : 'false';
+        $fw = !empty($sys['firewall']) ? 'true' : 'false';
+        $printing = !empty($sys['printing']) ? 'true' : 'false';
+        $tz = $this->nixString((string) $sys['timezone']);
+        $locale = (string) $sys['locale'];
+        if (!preg_match('/^[A-Za-z]{2}_[A-Za-z]{2}\.UTF-8$/', $locale)) {
+            $locale = 'fr_FR.UTF-8';
+        }
+        $localeNix = $this->nixString($locale);
+        $proxy = trim((string) $sys['proxy']);
+        $proxyBlock = '';
+        if ($proxy !== '') {
+            $proxyNix = $this->nixString($proxy);
+            $proxyBlock = <<<NIX
+
+  networking.proxy.default = {$proxyNix};
+  networking.proxy.noProxy = "127.0.0.1,localhost,::1";
+NIX;
+        }
+
+        return <<<NIX
+
+  # Options système (profil MDM)
+  services.openssh.enable = {$ssh};
+  networking.firewall.enable = {$fw};
+  services.printing.enable = {$printing};
+  time.timeZone = {$tz};
+  i18n.defaultLocale = {$localeNix};
+{$proxyBlock}
 NIX;
     }
 

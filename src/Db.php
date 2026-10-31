@@ -217,6 +217,31 @@ final class Db
                 // contrainte déjà présente ou moteur sans FK
             }
         }
+
+        // Statut de sync client (rapport post nixos-rebuild)
+        self::ensureClientColumn($pdo, 'sync_status', "VARCHAR(16) NULL DEFAULT NULL AFTER last_sync_at");
+        self::ensureClientColumn($pdo, 'sync_error', 'TEXT NULL AFTER sync_status');
+        self::ensureClientColumn($pdo, 'nix_generation', 'INT UNSIGNED NULL AFTER sync_error');
+        self::ensureClientColumn($pdo, 'profile_version', 'INT UNSIGNED NULL AFTER nix_generation');
+        self::ensureClientColumn($pdo, 'last_sync_ok_at', 'DATETIME NULL AFTER profile_version');
+        self::ensureClientColumn($pdo, 'rolled_back', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER last_sync_ok_at');
+        try {
+            $pdo->exec('ALTER TABLE mdm_clients ADD KEY idx_mdm_clients_sync_status (sync_status)');
+        } catch (\Throwable $e) {
+            // index déjà présent
+        }
+    }
+
+    private static function ensureClientColumn(\PDO $pdo, string $name, string $definition): void
+    {
+        try {
+            $cols = $pdo->query('SHOW COLUMNS FROM mdm_clients LIKE ' . $pdo->quote($name))->fetchAll();
+            if ($cols === []) {
+                $pdo->exec("ALTER TABLE mdm_clients ADD COLUMN `{$name}` {$definition}");
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
     }
 
     private static function ensureFolderNesting(

@@ -9,7 +9,7 @@ use NixVm\Auth;
 
 Auth::requireLogin();
 
-$version = defined('APP_VERSION') ? APP_VERSION : '0.3.9';
+$version = defined('APP_VERSION') ? APP_VERSION : '0.4.0';
 $installUrl = (new AppSettings())->installScriptUrl('default', true);
 
 layout_header('Documentation', 'aide');

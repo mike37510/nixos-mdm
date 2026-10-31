@@ -88,12 +88,15 @@ final class Clients
         return $this->findByToken($token) ?? [];
     }
 
-    public function markSync(string $token, ?string $deployedSlug = null): void
+    /**
+     * Config tirée (parc.nix) — pas encore un rebuild réussi.
+     */
+    public function markConfigPull(string $token, ?string $deployedSlug = null): void
     {
         if ($deployedSlug !== null && $deployedSlug !== '') {
             $stmt = $this->pdo->prepare(
-                'UPDATE mdm_clients SET last_sync_at = NOW(), last_seen_at = NOW(),
-                    meta = JSON_SET(COALESCE(meta, \'{}\'), \'$.deployed_profile\', :slug),
+                'UPDATE mdm_clients SET last_seen_at = NOW(),
+                    meta = JSON_SET(COALESCE(meta, \'{}\'), \'$.deployed_profile\', :slug, \'$.config_pulled_at\', DATE_FORMAT(NOW(), \'%Y-%m-%dT%H:%i:%s\')),
                     updated_at = NOW()
                  WHERE device_token = :token'
             );
@@ -101,9 +104,152 @@ final class Clients
             return;
         }
         $stmt = $this->pdo->prepare(
-            'UPDATE mdm_clients SET last_sync_at = NOW(), last_seen_at = NOW(), updated_at = NOW() WHERE device_token = :token'
+            'UPDATE mdm_clients SET last_seen_at = NOW(), updated_at = NOW() WHERE device_token = :token'
         );
         $stmt->execute(['token' => $token]);
+    }
+
+    /** @deprecated Utiliser markConfigPull + reportSync */
+    public function markSync(string $token, ?string $deployedSlug = null): void
+    {
+        $this->markConfigPull($token, $deployedSlug);
+    }
+
+    /**
+     * Rapport post rebuild (OK / échec + rollback éventuel).
+     *
+     * @param array{
+     *   status?:string,error?:string,nix_generation?:int|null,
+     *   profile_version?:int|null,profile_slug?:string|null,rolled_back?:bool,
+     *   hostname?:string|null,ip?:string|null
+     * } $report
+     */
+    public function reportSync(string $token, array $report): void
+    {
+        $status = strtolower(trim((string) ($report['status'] ?? '')));
+        if (!in_array($status, ['ok', 'failed', 'rolled_back'], true)) {
+            throw new InvalidArgumentException('Statut sync invalide (ok|failed|rolled_back).');
+        }
+        $error = trim((string) ($report['error'] ?? ''));
+        if (strlen($error) > 4000) {
+            $error = substr($error, 0, 4000) . '…';
+        }
+        $gen = isset($report['nix_generation']) && $report['nix_generation'] !== '' && $report['nix_generation'] !== null
+            ? max(0, (int) $report['nix_generation'])
+            : null;
+        $ver = isset($report['profile_version']) && $report['profile_version'] !== '' && $report['profile_version'] !== null
+            ? max(0, (int) $report['profile_version'])
+            : null;
+        $rolled = !empty($report['rolled_back']) || $status === 'rolled_back';
+        if ($status === 'rolled_back') {
+            $status = 'failed';
+        }
+        $slug = trim((string) ($report['profile_slug'] ?? ''));
+        $hostname = self::cleanHost((string) ($report['hostname'] ?? ''));
+        $ip = substr((string) ($report['ip'] ?? ''), 0, 45);
+
+        if ($status === 'ok') {
+            $sql = 'UPDATE mdm_clients SET
+                last_seen_at = NOW(), last_sync_at = NOW(), last_sync_ok_at = NOW(),
+                sync_status = \'ok\', sync_error = NULL, rolled_back = 0,
+                nix_generation = :gen, profile_version = :ver,
+                last_ip = COALESCE(NULLIF(:ip, \'\'), last_ip),
+                hostname = COALESCE(NULLIF(:hostname, \'\'), hostname),
+                updated_at = NOW()';
+            $params = [
+                'gen' => $gen,
+                'ver' => $ver,
+                'ip' => $ip,
+                'hostname' => $hostname,
+                'token' => $token,
+            ];
+        } else {
+            $sql = 'UPDATE mdm_clients SET
+                last_seen_at = NOW(), last_sync_at = NOW(),
+                sync_status = \'failed\', sync_error = :err, rolled_back = :rb,
+                nix_generation = :gen, profile_version = :ver,
+                last_ip = COALESCE(NULLIF(:ip, \'\'), last_ip),
+                hostname = COALESCE(NULLIF(:hostname, \'\'), hostname),
+                updated_at = NOW()';
+            $params = [
+                'err' => $error !== '' ? $error : 'nixos-rebuild a échoué',
+                'rb' => $rolled ? 1 : 0,
+                'gen' => $gen,
+                'ver' => $ver,
+                'ip' => $ip,
+                'hostname' => $hostname,
+                'token' => $token,
+            ];
+        }
+        if ($slug !== '') {
+            $sql .= ', meta = JSON_SET(COALESCE(meta, \'{}\'), \'$.deployed_profile\', :slug)';
+            $params['slug'] = $slug;
+        }
+        $sql .= ' WHERE device_token = :token';
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+    }
+
+    /** @return array{total:int,ok:int,failed:int,unknown:int,out_of_sync:int,rolled_back:int} */
+    public function dashboardStats(): array
+    {
+        $total = (int) $this->pdo->query('SELECT COUNT(*) FROM mdm_clients')->fetchColumn();
+        $ok = (int) $this->pdo->query(
+            "SELECT COUNT(*) FROM mdm_clients WHERE sync_status = 'ok'"
+        )->fetchColumn();
+        $failed = (int) $this->pdo->query(
+            "SELECT COUNT(*) FROM mdm_clients WHERE sync_status = 'failed'"
+        )->fetchColumn();
+        $rolled = (int) $this->pdo->query(
+            'SELECT COUNT(*) FROM mdm_clients WHERE rolled_back = 1'
+        )->fetchColumn();
+        $outOfSync = 0;
+        foreach ($this->listAll() as $row) {
+            if (self::isOutOfSync($row)) {
+                $outOfSync++;
+            }
+        }
+        return [
+            'total' => $total,
+            'ok' => $ok,
+            'failed' => $failed,
+            'unknown' => max(0, $total - $ok - $failed),
+            'out_of_sync' => $outOfSync,
+            'rolled_back' => $rolled,
+        ];
+    }
+
+    /** @param array<string, mixed> $row */
+    public static function isOutOfSync(array $row): bool
+    {
+        $status = (string) ($row['sync_status'] ?? '');
+        if ($status === 'failed') {
+            return true;
+        }
+        if (!empty($row['rolled_back'])) {
+            return true;
+        }
+        $meta = [];
+        if (!empty($row['meta'])) {
+            $decoded = json_decode((string) $row['meta'], true);
+            $meta = is_array($decoded) ? $decoded : [];
+        }
+        $deployed = (string) ($meta['deployed_profile'] ?? '');
+        $assigned = (string) ($row['profile_slug'] ?? '');
+        if ($deployed !== '' && $assigned !== '' && $deployed !== $assigned) {
+            return true;
+        }
+        $expected = isset($row['expected_profile_version']) ? (int) $row['expected_profile_version'] : null;
+        $applied = isset($row['profile_version']) && $row['profile_version'] !== null
+            ? (int) $row['profile_version']
+            : null;
+        if ($expected !== null && $expected > 0 && ($applied === null || $applied !== $expected)) {
+            // version attendue connue et client pas à jour (ou jamais rapporté depuis 0.4)
+            if ($applied !== null || $status === 'ok') {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function assignProfile(int $clientId, int $profileId): void
@@ -185,7 +331,11 @@ final class Clients
     {
         $sql = <<<SQL
             SELECT c.*, p.slug AS profile_slug, p.label AS profile_label,
-                   f.name AS folder_name
+                   f.name AS folder_name,
+                   (
+                     SELECT MAX(v.version_num) FROM mdm_profile_versions v
+                     WHERE v.profile_id = c.profile_id
+                   ) AS expected_profile_version
             FROM mdm_clients c
             JOIN mdm_profiles p ON p.id = c.profile_id
             LEFT JOIN mdm_machine_folders f ON f.id = c.folder_id
@@ -198,6 +348,22 @@ final class Clients
               c.id DESC
             SQL;
         return $this->pdo->query($sql)->fetchAll();
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function listRecentAlerts(int $limit = 8): array
+    {
+        $limit = max(1, min(50, $limit));
+        $stmt = $this->pdo->query(
+            "SELECT c.id, c.hostname, c.mac, c.sync_status, c.sync_error, c.nix_generation,
+                    c.profile_version, c.rolled_back, c.last_sync_at, p.label AS profile_label
+             FROM mdm_clients c
+             JOIN mdm_profiles p ON p.id = c.profile_id
+             WHERE c.sync_status = 'failed' OR c.rolled_back = 1
+             ORDER BY c.last_sync_at DESC, c.id DESC
+             LIMIT {$limit}"
+        );
+        return $stmt->fetchAll() ?: [];
     }
 
     public function countUnfiled(): int

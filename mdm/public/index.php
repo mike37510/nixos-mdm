@@ -205,12 +205,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // publish (défaut)
         $settings->update($_POST);
         $settings->setHubUrl($baseUrl);
+        $recorded = $versions->record($settings->profileId(), $settings->all(), 'Publication');
+        $latestRow = $versions->latest($settings->profileId());
+        $profileVer = $recorded['version_num']
+            ?? ($latestRow !== null ? (int) $latestRow['version_num'] : 0);
         $generator->generate($settings->all(), [
             'baseUrl' => $baseUrl,
             'profileSlug' => $settings->slug(),
             'isDefault' => $settings->isDefault(),
+            'profileVersion' => $profileVer,
         ]);
-        $recorded = $versions->record($settings->profileId(), $settings->all(), 'Publication');
         $message = 'Profil « ' . $settings->label() . ' » publié. Les clients de ce profil le récupéreront au prochain cycle.';
         if ($recorded !== null) {
             $message .= ' Version v' . $recorded['version_num'] . ' enregistrée.';
@@ -609,6 +613,50 @@ layout_header('Profils', 'mdm');
           <input type="checkbox" name="allowReboot" value="1" <?= !empty($data['allowReboot']) ? 'checked' : '' ?>>
           Autoriser le redémarrage automatique si nécessaire
         </label>
+
+        <?php
+          $sys = is_array($data['system'] ?? null)
+            ? array_merge(Settings::defaultSystemOptions(), $data['system'])
+            : Settings::defaultSystemOptions();
+        ?>
+        <fieldset class="mdm-sys-opts">
+          <legend>Options système NixOS</legend>
+          <div class="mdm-sys-grid">
+            <label class="check">
+              <input type="checkbox" name="sys_openssh" value="1" <?= !empty($sys['openssh']) ? 'checked' : '' ?>>
+              SSH (OpenSSH)
+            </label>
+            <label class="check">
+              <input type="checkbox" name="sys_firewall" value="1" <?= !empty($sys['firewall']) ? 'checked' : '' ?>>
+              Pare-feu
+            </label>
+            <label class="check">
+              <input type="checkbox" name="sys_printing" value="1" <?= !empty($sys['printing']) ? 'checked' : '' ?>>
+              Imprimantes (CUPS)
+            </label>
+          </div>
+          <label>Fuseau horaire
+            <input type="text" name="sys_timezone" value="<?= h((string) $sys['timezone']) ?>" placeholder="Europe/Paris" list="tz-common">
+          </label>
+          <datalist id="tz-common">
+            <option value="Europe/Paris"></option>
+            <option value="Europe/Brussels"></option>
+            <option value="Europe/London"></option>
+            <option value="UTC"></option>
+          </datalist>
+          <label>Langue / locale
+            <input type="text" name="sys_locale" value="<?= h((string) $sys['locale']) ?>" placeholder="fr_FR.UTF-8" list="locale-common">
+          </label>
+          <datalist id="locale-common">
+            <option value="fr_FR.UTF-8"></option>
+            <option value="en_US.UTF-8"></option>
+            <option value="de_DE.UTF-8"></option>
+          </datalist>
+          <label>Proxy HTTP (optionnel)
+            <input type="text" name="sys_proxy" value="<?= h((string) $sys['proxy']) ?>" placeholder="http://proxy.exemple:3128" class="mono">
+          </label>
+          <p class="hint" style="margin:.35rem 0 0">Ces options sont écrites dans <code>parc.nix</code> à la publication.</p>
+        </fieldset>
 
         <div class="actions" style="margin-top:1.2rem">
           <button class="btn primary" type="submit">Publier ce profil</button>

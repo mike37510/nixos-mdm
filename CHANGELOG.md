@@ -2,6 +2,23 @@
 
 Historique des versions du hub et du Centre Logiciels.
 
+## 0.4.0 — 2026-10-31
+
+### Statut machines
+- Rapport client post-rebuild : **OK / échec**, génération Nix, version de profil, message d’erreur
+- Affichage sur les cartes Machines (pastille + détail)
+- API `client-api.php?action=sync-report`
+
+### Rollback client
+- Si `nixos-rebuild` échoue : retour à la génération précédente puis alerte au hub (`rolled_back`)
+
+### Options système NixOS (profil)
+- SSH, pare-feu, imprimantes (CUPS), fuseau, locale, proxy HTTP
+- Générés dans `parc.nix` à la publication
+
+### Tableau de bord
+- Page **Tableau de bord** : total machines, sync OK, hors sync, échecs, dernières publications et alertes
+
 ## 0.3.9 — 2026-10-30
 
 ### Dossiers

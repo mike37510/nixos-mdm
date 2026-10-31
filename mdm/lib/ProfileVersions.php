@@ -176,6 +176,7 @@ final class ProfileVersions
     /** @param array<string, mixed> $data */
     public static function fingerprint(array $data): string
     {
+        $sys = is_array($data['system'] ?? null) ? $data['system'] : [];
         $norm = [
             'packages' => self::normalizePackages($data['packages'] ?? []),
             'autoUpgradeEnable' => !empty($data['autoUpgradeEnable']),
@@ -185,6 +186,14 @@ final class ProfileVersions
             'allowReboot' => !empty($data['allowReboot']),
             'randomizedDelaySec' => (string) ($data['randomizedDelaySec'] ?? '0'),
             'hostname' => (string) ($data['hostname'] ?? ''),
+            'system' => [
+                'openssh' => !empty($sys['openssh']),
+                'firewall' => !empty($sys['firewall']),
+                'printing' => !empty($sys['printing']),
+                'timezone' => (string) ($sys['timezone'] ?? ''),
+                'locale' => (string) ($sys['locale'] ?? ''),
+                'proxy' => (string) ($sys['proxy'] ?? ''),
+            ],
         ];
         return hash('sha256', (string) json_encode($norm, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }

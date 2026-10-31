@@ -1,4 +1,4 @@
-# Linux MDM 0.3.9 — guide rapide
+# Linux MDM 0.4.0 — guide rapide
 
 ## Qu’est-ce que c’est ?
 
@@ -10,8 +10,9 @@ Interface : [https://mdmlinux.borninthe80s.fr/](https://mdmlinux.borninthe80s.fr
 
 | Écran | Rôle |
 | --- | --- |
-| **Profils** | Paquets + fréquence, **publier**, versions / restauration, **dossiers imbriqués**, script d’install |
-| **Machines** | Inventaire, assignation de profil, **dossiers imbriqués** (glisser-déposer) |
+| **Tableau de bord** | Compteurs parc, hors sync, alertes, dernières publications |
+| **Profils** | Paquets + options système + fréquence, **publier**, versions / restauration, **dossiers imbriqués**, script d’install |
+| **Machines** | Inventaire, statut sync (OK/KO, gen Nix, version, erreur), dossiers imbriqués |
 | **Logiciels** | Voir / retirer les paquets d’un profil |
 | **Magasin** | Catalogue DSI validé ; recherche nixpkgs |
 | **Documentation** | Ce guide dans l’UI |
@@ -55,6 +56,12 @@ sudo systemctl start nix-builder-mdm-sync.service
 - Glisser-déposer postes, profils et dossiers (poignée ⠿) entre tous les niveaux
 - Le **dossier** classe l’inventaire ; le **profil** (liste) détermine les logiciels
 - Appliquer un profil à tout un dossier (y compris sous-dossiers)
+- Après chaque rebuild, le client envoie un **rapport** : OK/échec, génération Nix, version de profil, erreur
+- En cas d’échec `nixos-rebuild`, le client tente un **rollback** vers la génération précédente et alerte le hub
+
+## Options système (profil)
+
+Sur **Profils**, section *Options système NixOS* : SSH, pare-feu, CUPS, fuseau, locale, proxy — écrites dans `parc.nix` à la publication.
 
 ## Application client « Centre Logiciels »
 

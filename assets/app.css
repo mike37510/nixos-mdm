@@ -950,3 +950,58 @@ html[data-theme="dark"] .mp-sidebar {
 html[data-theme="dark"] .login-logo {
   filter: none;
 }
+
+/* Sync status + dashboard 0.4 */
+.sync-pill {
+  display: inline-block; padding: .12rem .45rem; border-radius: 999px;
+  font-size: .72rem; font-weight: 600; letter-spacing: .01em; vertical-align: middle;
+}
+.sync-ok { background: color-mix(in srgb, #1f9d55 22%, transparent); color: #1f9d55; }
+.sync-fail { background: color-mix(in srgb, var(--err) 20%, transparent); color: var(--err); }
+.sync-warn { background: color-mix(in srgb, #c98a00 22%, transparent); color: #b78103; }
+.sync-unknown { background: var(--surface-2); color: var(--muted); }
+.mf-card-error {
+  margin: .2rem 0 .45rem; padding: .4rem .55rem; border-radius: 8px;
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: var(--err); font-size: .78rem; line-height: 1.35;
+  word-break: break-word;
+}
+.mdm-sys-opts {
+  margin: 1rem 0 0; padding: .85rem 1rem 1rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.mdm-sys-opts legend {
+  padding: 0 .35rem; font-weight: 600; font-size: .9rem;
+}
+.mdm-sys-grid {
+  display: flex; flex-wrap: wrap; gap: .65rem 1.1rem; margin: .35rem 0 .75rem;
+}
+.dash-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: .75rem;
+}
+.dash-stat {
+  text-decoration: none; color: inherit; display: flex; flex-direction: column; gap: .25rem;
+  padding: 1rem 1.1rem; transition: box-shadow .15s, transform .15s;
+}
+.dash-stat:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.dash-stat-label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.dash-stat-value { font-size: 1.65rem; font-weight: 700; line-height: 1.1; }
+.dash-stat-sub { font-size: .78rem; color: var(--muted); }
+.dash-ok { color: #1f9d55; }
+.dash-warn { color: #b78103; }
+.dash-err { color: var(--err); }
+.dash-alerts, .dash-pubs { list-style: none; margin: 0; padding: 0; }
+.dash-alerts li, .dash-pubs li {
+  padding: .75rem 0; border-bottom: 1px solid var(--border);
+}
+.dash-alerts li:last-child, .dash-pubs li:last-child { border-bottom: 0; }
+.dash-alert-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .65rem; margin-bottom: .2rem;
+}
+.dash-pubs a {
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: .4rem;
+  text-decoration: none; color: inherit;
+}
+.dash-pubs a:hover strong { color: var(--primary); }
+.dash-pub-sum { margin-top: .25rem; font-size: .8rem; color: var(--muted); }

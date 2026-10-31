@@ -184,11 +184,65 @@ final class Settings
             'randomizedDelaySec' => trim((string) ($input['randomizedDelaySec'] ?? '0')) ?: '0',
             'hostname' => $hostname,
             'packages' => $packages,
+            'system' => self::parseSystemOptions($input),
             'hubUrl' => (string) ($this->data['hubUrl'] ?? ''),
             'updatedAt' => (new DateTimeImmutable('now'))->format(DateTimeInterface::ATOM),
         ];
 
         $this->persist();
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public static function parseSystemOptions(array $input): array
+    {
+        $defaults = self::defaultSystemOptions();
+        $tz = trim((string) ($input['sys_timezone'] ?? $defaults['timezone']));
+        if ($tz === '' || !preg_match('/^[A-Za-z0-9_+\-\/]+$/', $tz) || strlen($tz) > 64) {
+            $tz = $defaults['timezone'];
+        }
+        $locale = trim((string) ($input['sys_locale'] ?? $defaults['locale']));
+        if ($locale === '' || !preg_match('/^[A-Za-z]{2}_[A-Za-z]{2}(\.UTF-8)?$/', $locale)) {
+            $locale = $defaults['locale'];
+        }
+        if (!str_contains($locale, '.')) {
+            $locale .= '.UTF-8';
+        }
+        $proxy = trim((string) ($input['sys_proxy'] ?? ''));
+        if ($proxy !== '' && !preg_match('#^(https?|socks5)://[^\s]+$#i', $proxy)) {
+            // accepte aussi host:port
+            if (!preg_match('/^[A-Za-z0-9._\-:]+:\d{2,5}$/', $proxy)) {
+                $proxy = '';
+            } else {
+                $proxy = 'http://' . $proxy;
+            }
+        }
+        if (strlen($proxy) > 200) {
+            $proxy = '';
+        }
+        return [
+            'openssh' => isset($input['sys_openssh']),
+            'firewall' => isset($input['sys_firewall']),
+            'printing' => isset($input['sys_printing']),
+            'timezone' => $tz,
+            'locale' => $locale,
+            'proxy' => $proxy,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public static function defaultSystemOptions(): array
+    {
+        return [
+            'openssh' => true,
+            'firewall' => false,
+            'printing' => false,
+            'timezone' => 'Europe/Paris',
+            'locale' => 'fr_FR.UTF-8',
+            'proxy' => '',
+        ];
     }
 
     public function setHubUrl(string $url): void
@@ -497,6 +551,8 @@ final class Settings
             array_map('strval', $merged['packages']),
             static fn (string $p) => $p !== ''
         ));
+        $sys = is_array($merged['system'] ?? null) ? $merged['system'] : [];
+        $merged['system'] = array_merge(self::defaultSystemOptions(), $sys);
         unset($merged['flakeUrl']);
         return $merged;
     }
@@ -514,6 +570,7 @@ final class Settings
             'randomizedDelaySec' => '0',
             'hostname' => 'nixos-{mac}',
             'packages' => ['vim', 'git', 'curl', 'htop'],
+            'system' => self::defaultSystemOptions(),
             'hubUrl' => '',
             'updatedAt' => null,
         ];

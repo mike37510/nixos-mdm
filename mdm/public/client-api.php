@@ -169,6 +169,22 @@ try {
             break;
         }
 
+        case 'sync-report': {
+            $body = client_json_body();
+            $clients->reportSync($token, [
+                'status' => (string) ($body['status'] ?? ''),
+                'error' => (string) ($body['error'] ?? ''),
+                'nix_generation' => $body['nix_generation'] ?? null,
+                'profile_version' => $body['profile_version'] ?? null,
+                'profile_slug' => (string) ($body['profile_slug'] ?? ''),
+                'rolled_back' => !empty($body['rolled_back']),
+                'hostname' => (string) ($body['hostname'] ?? ''),
+                'ip' => (string) ($body['ip'] ?? ($_SERVER['REMOTE_ADDR'] ?? '')),
+            ]);
+            echo json_encode(['ok' => true]);
+            break;
+        }
+
         default:
             http_response_code(400);
             echo json_encode(['error' => 'Action inconnue.']);
