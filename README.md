@@ -9,6 +9,32 @@ MDM pour postes **NixOS** : profils logiciels versionnés, inventaire machines (
 | Historique | [CHANGELOG.md](CHANGELOG.md) |
 | Changelog UI | `/mdm/changelog.php` |
 
+## Captures d’écran
+
+### Connexion
+
+![Connexion](docs/screenshots/01-connexion.png)
+
+### Profils (dossiers imbriqués)
+
+![Profils](docs/screenshots/02-profils.png)
+
+### Machines
+
+![Machines](docs/screenshots/03-machines.png)
+
+### Magasin
+
+![Magasin](docs/screenshots/04-magasin.png)
+
+### Logiciels
+
+![Logiciels](docs/screenshots/05-logiciels.png)
+
+### Configuration
+
+![Configuration](docs/screenshots/06-configuration.png)
+
 ## Démarrage rapide (serveur)
 
 ```bash
